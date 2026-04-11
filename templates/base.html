@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transport Billing Software</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f5f7fb; color: #1f2937; }
+    header { background: #0f172a; color: white; padding: 14px 20px; }
+    nav a { color: white; margin-right: 14px; text-decoration: none; font-size: 14px; }
+    .container { max-width: 1200px; margin: 20px auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+    .card { background: #eef2ff; padding: 16px; border-radius: 10px; }
+    .muted { color: #6b7280; }
+    table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+    th, td { border: 1px solid #d1d5db; padding: 8px; font-size: 14px; text-align: left; }
+    th { background: #f3f4f6; }
+    input, textarea, select { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 8px; box-sizing: border-box; }
+    textarea { min-height: 70px; }
+    label { font-size: 13px; font-weight: bold; display: block; margin-bottom: 6px; }
+    .row { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; margin-bottom: 12px; }
+    .col-2 { grid-column: span 2; } .col-3 { grid-column: span 3; } .col-4 { grid-column: span 4; } .col-6 { grid-column: span 6; } .col-8 { grid-column: span 8; } .col-12 { grid-column: span 12; }
+    .btn { display: inline-block; padding: 9px 14px; background: #1d4ed8; color: white; text-decoration: none; border: none; border-radius: 8px; cursor: pointer; }
+    .btn-secondary { background: #475569; }
+    .btn-success { background: #15803d; }
+    .btn-warning { background: #b45309; }
+    .flash { padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; background: #dcfce7; }
+    .login-box { max-width: 420px; margin: 70px auto; background: white; padding: 24px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+    .small { font-size: 12px; }
+    @media print { header, .no-print { display: none; } body { background: white; } .container { box-shadow: none; margin: 0; } }
+  </style>
+</head>
+<body>
+  {% if session.get('user_id') %}
+  <header>
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap;">
+      <div><strong>{{ company.name }}</strong><div class="small">{{ company.footer }}</div></div>
+      <nav>
+        <a href="{{ url_for('dashboard') }}">Dashboard</a>
+        <a href="{{ url_for('customers') }}">Customers</a>
+        <a href="{{ url_for('suppliers') }}">Suppliers</a>
+        <a href="{{ url_for('invoices') }}">Sales</a>
+        <a href="{{ url_for('purchases') }}">Purchase</a>
+        <a href="{{ url_for('payments') }}">Payment</a>
+        <a href="{{ url_for('receipts') }}">Receipt</a>
+        <a href="{{ url_for('credit_notes') }}">Credit Note</a>
+        <a href="{{ url_for('statement') }}">Statement</a>
+        <a href="{{ url_for('logout') }}">Logout</a>
+      </nav>
+    </div>
+  </header>
+  {% endif %}
+  <div class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>

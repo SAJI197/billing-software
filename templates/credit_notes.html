@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Credit Notes</h2>
+<form method="post">
+  <div class="row">
+    <div class="col-3"><label>Credit No</label><input name="credit_no" value="{{ credit_no }}"></div>
+    <div class="col-3"><label>Date</label><input type="date" name="credit_date" value="{{ today }}" required></div>
+    <div class="col-6"><label>Customer</label><select name="customer_id" required>{% for c in customers %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></div>
+    <div class="col-4"><label>Invoice Ref</label><input name="invoice_ref"></div>
+    <div class="col-4"><label>Taxable Amount</label><input name="taxable_amount" type="number" step="0.01" required></div>
+    <div class="col-4"><label>VAT Amount</label><input name="vat_amount" type="number" step="0.01" required></div>
+    <div class="col-12"><label>Description</label><textarea name="description"></textarea></div>
+  </div>
+  <button class="btn" type="submit">Save Credit Note</button>
+</form>
+<table><tr><th>Credit No</th><th>Date</th><th>Customer</th><th>Total</th><th>PDF</th></tr>{% for c in credit_notes %}<tr><td>{{ c.credit_no }}</td><td>{{ c.credit_date.strftime('%d-%m-%Y') }}</td><td>{{ c.customer.name }}</td><td>{{ c.total_amount|money }}</td><td><a class="btn btn-secondary" href="{{ url_for('credit_note_pdf', row_id=c.id) }}">PDF</a></td></tr>{% endfor %}</table>
+{% endblock %}

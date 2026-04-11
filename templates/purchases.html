@@ -1,0 +1,16 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Purchase Entry</h2>
+<form method="post">
+  <div class="row">
+    <div class="col-3"><label>Doc No</label><input name="doc_no" value="{{ doc_no }}"></div>
+    <div class="col-3"><label>Date</label><input type="date" name="doc_date" value="{{ today }}" required></div>
+    <div class="col-6"><label>Supplier</label><select name="supplier_id" required>{% for s in suppliers %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></div>
+    <div class="col-6"><label>Description</label><textarea name="description"></textarea></div>
+    <div class="col-2"><label>Taxable Amount</label><input name="taxable_amount" type="number" step="0.01" required></div>
+    <div class="col-2"><label>VAT %</label><select name="vat_percent"><option value="5">5</option><option value="0">0</option></select></div>
+  </div>
+  <button class="btn" type="submit">Save Purchase</button>
+</form>
+<table><tr><th>Doc No</th><th>Date</th><th>Supplier</th><th>Total</th><th>PDF</th></tr>{% for p in purchases %}<tr><td>{{ p.doc_no }}</td><td>{{ p.doc_date.strftime('%d-%m-%Y') }}</td><td>{{ p.supplier.name }}</td><td>{{ p.total_amount|money }}</td><td><a class="btn btn-secondary" href="{{ url_for('purchase_pdf', row_id=p.id) }}">PDF</a></td></tr>{% endfor %}</table>
+{% endblock %}
