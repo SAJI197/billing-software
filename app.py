@@ -288,6 +288,13 @@ def simple_pdf(title, doc_no, doc_date, party_name, party_meta, lines):
 
 
 def invoice_pdf(invoice: Invoice):
+    def clean_text(value: str) -> str:
+        return ' '.join((value or '').replace(' ', ' ').replace('•', '-').split())
+
+    def vat_percent_text(value) -> str:
+        dec = to_decimal(value)
+        return f"{int(dec)}%" if dec == dec.to_integral() else f"{dec.normalize()}%"
+
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
@@ -295,49 +302,76 @@ def invoice_pdf(invoice: Invoice):
     per_page = 18
     pages = max(1, math.ceil(len(items) / per_page))
 
+    left = 18 * mm
+    right = width - 18 * mm
+    table_width = right - left
+    col_widths = [12 * mm, 76 * mm, 18 * mm, 25 * mm, 25 * mm, 16 * mm, 22 * mm]
+    x_positions = [left]
+    for w in col_widths:
+        x_positions.append(x_positions[-1] + w)
+
     for page_idx in range(pages):
         draw_common_header(pdf, 'TAX INVOICE', invoice.invoice_no, invoice.invoice_date)
         y = height - 56 * mm
         pdf.setFont('Helvetica-Bold', 10)
-        pdf.drawString(18 * mm, y, 'Customer:')
+        pdf.drawString(left, y, 'Customer:')
         pdf.setFont('Helvetica', 10)
-        pdf.drawString(38 * mm, y, invoice.customer.name)
+        pdf.drawString(left + 20 * mm, y, clean_text(invoice.customer.name))
         y -= 5 * mm
         if invoice.customer.address:
-            pdf.drawString(38 * mm, y, invoice.customer.address[:85])
+            pdf.drawString(left + 20 * mm, y, clean_text(invoice.customer.address)[:80])
             y -= 5 * mm
         if invoice.customer.trn:
-            pdf.drawString(38 * mm, y, f'TRN: {invoice.customer.trn}')
+            pdf.drawString(left + 20 * mm, y, f'TRN: {clean_text(invoice.customer.trn)}')
             y -= 5 * mm
         y -= 4 * mm
 
         table_top = y
-        col_x = [18 * mm, 28 * mm, 120 * mm, 136 * mm, 160 * mm, 175 * mm, 190 * mm]
+        row_h = 8 * mm
+        if page_idx == pages - 1:
+            table_bottom = 74 * mm
+        else:
+            table_bottom = 28 * mm
+
         headers = ['#', 'Description', 'Qty', 'Rate', 'Amount', 'VAT %', 'VAT Amt']
         pdf.setFont('Helvetica-Bold', 9)
-        for x, head in zip(col_x, headers):
-            pdf.drawString(x, table_top, head)
-        pdf.line(18 * mm, table_top - 2 * mm, width - 18 * mm, table_top - 2 * mm)
+        pdf.rect(left, table_bottom, table_width, table_top - table_bottom + row_h, stroke=1, fill=0)
+        pdf.setFillGray(0.94)
+        pdf.rect(left, table_top - 2 * mm, table_width, row_h, stroke=0, fill=1)
+        pdf.setFillGray(0)
+        for x in x_positions[1:-1]:
+            pdf.line(x, table_bottom, x, table_top - 2 * mm + row_h)
+        pdf.line(left, table_top - 2 * mm, right, table_top - 2 * mm)
+        pdf.line(left, table_top - 2 * mm + row_h, right, table_top - 2 * mm + row_h)
 
-        y = table_top - 9 * mm
+        header_y = table_top + 1 * mm
+        pdf.drawCentredString((x_positions[0] + x_positions[1]) / 2, header_y, headers[0])
+        pdf.drawString(x_positions[1] + 2 * mm, header_y, headers[1])
+        pdf.drawRightString(x_positions[3] - 2 * mm, header_y, headers[2])
+        pdf.drawRightString(x_positions[4] - 2 * mm, header_y, headers[3])
+        pdf.drawRightString(x_positions[5] - 2 * mm, header_y, headers[4])
+        pdf.drawRightString(x_positions[6] - 2 * mm, header_y, headers[5])
+        pdf.drawRightString(x_positions[7] - 2 * mm, header_y, headers[6])
+
+        y = table_top - 2 * mm - 6 * mm
         page_items = items[page_idx * per_page:(page_idx + 1) * per_page]
         pdf.setFont('Helvetica', 9)
         for idx, item in enumerate(page_items, start=page_idx * per_page + 1):
-            pdf.drawString(col_x[0], y, str(idx))
-            pdf.drawString(col_x[1], y, item['description'][:48])
-            pdf.drawRightString(col_x[3] - 4 * mm, y, money(item['qty']))
-            pdf.drawRightString(col_x[4] - 4 * mm, y, money(item['rate']))
-            pdf.drawRightString(col_x[5] - 4 * mm, y, money(item['amount']))
-            pdf.drawRightString(col_x[6] - 4 * mm, y, str(item['vat_percent']))
-            pdf.drawRightString(width - 18 * mm, y, money(item['vat_amount']))
-            y -= 8 * mm
+            pdf.drawCentredString((x_positions[0] + x_positions[1]) / 2, y, str(idx))
+            pdf.drawString(x_positions[1] + 2 * mm, y, clean_text(item['description'])[:42])
+            pdf.drawRightString(x_positions[3] - 2 * mm, y, money(item['qty']))
+            pdf.drawRightString(x_positions[4] - 2 * mm, y, money(item['rate']))
+            pdf.drawRightString(x_positions[5] - 2 * mm, y, money(item['amount']))
+            pdf.drawRightString(x_positions[6] - 2 * mm, y, vat_percent_text(item['vat_percent']))
+            pdf.drawRightString(x_positions[7] - 2 * mm, y, money(item['vat_amount']))
+            pdf.line(left, y - 2.5 * mm, right, y - 2.5 * mm)
+            y -= row_h
 
-        pdf.rect(18 * mm, 32 * mm, width - 36 * mm, table_top - 34 * mm, stroke=1, fill=0)
         if page_idx == pages - 1:
-            y = 62 * mm
-            pdf.line(110 * mm, y + 20 * mm, width - 18 * mm, y + 20 * mm)
+            words_y = 58 * mm
             pdf.setFont('Helvetica', 10)
-            pdf.drawString(18 * mm, y + 18 * mm, f'Amount in words: {amount_in_words(to_decimal(invoice.grand_total))}')
+            pdf.drawString(left, words_y, f'Amount in words: {amount_in_words(to_decimal(invoice.grand_total))}')
+
             summary = [
                 ('Subtotal', invoice.subtotal),
                 ('VAT @ 5%', invoice.vat_5_total),
@@ -345,13 +379,21 @@ def invoice_pdf(invoice: Invoice):
                 ('VAT Total', invoice.vat_total),
                 ('Grand Total', invoice.grand_total),
             ]
-            sy = y + 14 * mm
+            label_x = 128 * mm
+            value_x = right - 2 * mm
+            sy = 58 * mm
+            pdf.setFont('Helvetica', 10)
             for label, value in summary:
-                pdf.drawString(118 * mm, sy, label)
-                pdf.drawRightString(width - 18 * mm, sy, money(value))
+                if label == 'Grand Total':
+                    pdf.setFont('Helvetica-Bold', 10)
+                else:
+                    pdf.setFont('Helvetica', 10)
+                pdf.drawString(label_x, sy, label)
+                pdf.drawRightString(value_x, sy, money(value))
                 sy -= 6 * mm
+
         pdf.setFont('Helvetica-Oblique', 9)
-        pdf.drawString(18 * mm, 15 * mm, COMPANY['footer'])
+        pdf.drawString(left, 15 * mm, COMPANY['footer'])
         if page_idx < pages - 1:
             pdf.showPage()
 
