@@ -657,13 +657,13 @@ def statement_pdf():
     pdf.save()
     buffer.seek(0)
     return send_file(buffer, as_attachment=True, download_name=f'statement-{customer.id}.pdf', mimetype='application/pdf')
-
 with app.app_context():
-    db.create_all()                                  
-if __name__ == '__main__':
-    
-        if not User.query.filter_by(username='admin').first():
-            db.session.add(User(username='admin', password_hash=generate_password_hash('admin123')))
-            db.session.commit()
+    db.create_all()
+
+if _name_ == '_main_':
+    if not User.query.filter_by(username='admin').first():
+        db.session.add(User(username='admin', password_hash=generate_password_hash('admin123')))
+        db.session.commit()
+
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False)             
