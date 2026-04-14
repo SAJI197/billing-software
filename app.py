@@ -31,7 +31,7 @@ except Exception:
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'change-this-secret-key')
+app.config['SECRET_KEY'] = os.environ['SECRET_KEY']                                                        
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f"sqlite:///{os.path.join(BASE_DIR, 'app.db')}")
 if app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgres://'):
     app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace('postgres://', 'postgresql://', 1)
@@ -349,16 +349,11 @@ def invoice_pdf(invoice: Invoice):
 @app.context_processor
 def inject_company():
     return {'company': COMPANY}
+if __name__ == '__main__':                                    
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)                                
 
 
-@app.route('/init-db')
-def init_db():
-    db.create_all()
-    if not User.query.filter_by(username='admin').first():
-        user = User(username='admin', password_hash=generate_password_hash('admin123'))
-        db.session.add(user)
-        db.session.commit()
-    return 'Database initialized. Login with admin / admin123'
 
 
 @app.route('/login', methods=['GET', 'POST'])
