@@ -657,6 +657,29 @@ def statement_pdf():
     pdf.save()
     buffer.seek(0)
     return send_file(buffer, as_attachment=True, download_name=f'statement-{customer.id}.pdf', mimetype='application/pdf')
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+
+        user = User.query.filter_by(username=username).first()
+
+        if user and check_password_hash(user.password_hash, password):
+            session['user_id'] = user.id
+           return redirect('/')                      
+
+        flash('Invalid username or password')
+
+    return render_template('login.html')
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+
 with app.app_context():
     db.create_all()
 
