@@ -30,15 +30,21 @@ except Exception:
     num2words = None
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ['SECRET_KEY']                                                        
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', f"sqlite:///{os.path.join(BASE_DIR, 'app.db')}")
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'change-this-in-production')
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
+    'DATABASE_URL',
+    f"sqlite:///{os.path.join(BASE_DIR, 'app.db')}",
+)
 if app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgres://'):
-    app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace('postgres://', 'postgresql://', 1)
+    app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace(
+        'postgres://', 'postgresql://', 1
+    )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
-                                                      
+
 COMPANY = {
     'name': 'TORONTO ROAD TRANSPORT LLC',
     'address': 'Dubai, UAE',
@@ -177,6 +183,7 @@ def login_required(func_):
         if 'user_id' not in session:
             return redirect(url_for('login'))
         return func_(*args, **kwargs)
+
     return wrapper
 
 
@@ -220,8 +227,16 @@ def parse_invoice_items(form) -> list[dict]:
 
 def compute_invoice_totals(items: list[dict]):
     subtotal = sum(to_decimal(i['amount']) for i in items)
-    vat_5 = sum(to_decimal(i['vat_amount']) for i in items if to_decimal(i['vat_percent']) == Decimal('5.00'))
-    vat_0 = sum(to_decimal(i['vat_amount']) for i in items if to_decimal(i['vat_percent']) == Decimal('0.00'))
+    vat_5 = sum(
+        to_decimal(i['vat_amount'])
+        for i in items
+        if to_decimal(i['vat_percent']) == Decimal('5.00')
+    )
+    vat_0 = sum(
+        to_decimal(i['vat_amount'])
+        for i in items
+        if to_decimal(i['vat_percent']) == Decimal('0.00')
+    )
     vat_total = vat_5 + vat_0
     grand_total = subtotal + vat_total
     return subtotal, vat_5, vat_0, vat_total, grand_total
@@ -348,23 +363,21 @@ def invoice_pdf(invoice: Invoice):
 @app.context_processor
 def inject_company():
     return {'company': COMPANY}
-if __name__ == '__main__':                                    
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)                                
-
-
 
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
+        username = request.form.get('username')
+        password = request.form.get('password')
         user = User.query.filter_by(username=username).first()
+
         if user and check_password_hash(user.password_hash, password):
             session['user_id'] = user.id
             return redirect(url_for('dashboard'))
+
         flash('Invalid username or password.', 'danger')
+
     return render_template('login.html')
 
 
@@ -436,6 +449,7 @@ def invoice_new():
         if not items:
             flash('Add at least one line item.', 'danger')
             return redirect(url_for('invoice_new'))
+
         subtotal, vat_5, vat_0, vat_total, grand_total = compute_invoice_totals(items)
         inv = Invoice(
             invoice_no=request.form.get('invoice_no') or next_number('INV', None),
@@ -453,14 +467,25 @@ def invoice_new():
         db.session.commit()
         flash('Invoice created.', 'success')
         return redirect(url_for('invoices'))
-    return render_template('invoice_form.html', customers=Customer.query.order_by(Customer.name).all(), invoice_no=next_number('INV', None), today=date.today())
+
+    return render_template(
+        'invoice_form.html',
+        customers=Customer.query.order_by(Customer.name).all(),
+        invoice_no=next_number('INV', None),
+        today=date.today(),
+    )
 
 
 @app.route('/invoice/<int:invoice_id>/pdf')
 @login_required
 def invoice_download(invoice_id):
     inv = Invoice.query.get_or_404(invoice_id)
-    return send_file(invoice_pdf(inv), as_attachment=True, download_name=f'{inv.invoice_no}.pdf', mimetype='application/pdf')
+    return send_file(
+        invoice_pdf(inv),
+        as_attachment=True,
+        download_name=f'{inv.invoice_no}.pdf',
+        mimetype='application/pdf',
+    )
 
 
 @app.route('/purchases', methods=['GET', 'POST'])
@@ -485,15 +510,40 @@ def purchases():
         db.session.commit()
         flash('Purchase saved.', 'success')
         return redirect(url_for('purchases'))
-    return render_template('purchases.html', purchases=Purchase.query.order_by(Purchase.id.desc()).all(), suppliers=Supplier.query.order_by(Supplier.name).all(), doc_no=next_number('PUR', None), today=date.today())
+
+    return render_template(
+        'purchases.html',
+        purchases=Purchase.query.order_by(Purchase.id.desc()).all(),
+        suppliers=Supplier.query.order_by(Supplier.name).all(),
+        doc_no=next_number('PUR', None),
+        today=date.today(),
+    )
 
 
 @app.route('/purchase/<int:row_id>/pdf')
 @login_required
 def purchase_pdf(row_id):
     row = Purchase.query.get_or_404(row_id)
-    pdf = simple_pdf('PURCHASE VOUCHER', row.doc_no, row.doc_date, row.supplier.name, [row.supplier.address, f'TRN: {row.supplier.trn}'], [('Description', row.description), ('Taxable Amount', money(row.taxable_amount)), ('VAT %', row.vat_percent), ('VAT Amount', money(row.vat_amount)), ('Total', money(row.total_amount))])
-    return send_file(pdf, as_attachment=True, download_name=f'{row.doc_no}.pdf', mimetype='application/pdf')
+    pdf = simple_pdf(
+        'PURCHASE VOUCHER',
+        row.doc_no,
+        row.doc_date,
+        row.supplier.name,
+        [row.supplier.address, f'TRN: {row.supplier.trn}'],
+        [
+            ('Description', row.description),
+            ('Taxable Amount', money(row.taxable_amount)),
+            ('VAT %', row.vat_percent),
+            ('VAT Amount', money(row.vat_amount)),
+            ('Total', money(row.total_amount)),
+        ],
+    )
+    return send_file(
+        pdf,
+        as_attachment=True,
+        download_name=f'{row.doc_no}.pdf',
+        mimetype='application/pdf',
+    )
 
 
 @app.route('/payments', methods=['GET', 'POST'])
@@ -512,15 +562,34 @@ def payments():
         db.session.commit()
         flash('Payment saved.', 'success')
         return redirect(url_for('payments'))
-    return render_template('payments.html', payments=PaymentMade.query.order_by(PaymentMade.id.desc()).all(), suppliers=Supplier.query.order_by(Supplier.name).all(), voucher_no=next_number('PAY', None), today=date.today())
+
+    return render_template(
+        'payments.html',
+        payments=PaymentMade.query.order_by(PaymentMade.id.desc()).all(),
+        suppliers=Supplier.query.order_by(Supplier.name).all(),
+        voucher_no=next_number('PAY', None),
+        today=date.today(),
+    )
 
 
 @app.route('/payment/<int:row_id>/pdf')
 @login_required
 def payment_pdf(row_id):
     row = PaymentMade.query.get_or_404(row_id)
-    pdf = simple_pdf('PAYMENT VOUCHER', row.voucher_no, row.voucher_date, row.supplier.name, [row.supplier.address], [('Amount', money(row.amount)), ('Reference', row.reference), ('Notes', row.notes)])
-    return send_file(pdf, as_attachment=True, download_name=f'{row.voucher_no}.pdf', mimetype='application/pdf')
+    pdf = simple_pdf(
+        'PAYMENT VOUCHER',
+        row.voucher_no,
+        row.voucher_date,
+        row.supplier.name,
+        [row.supplier.address],
+        [('Amount', money(row.amount)), ('Reference', row.reference), ('Notes', row.notes)],
+    )
+    return send_file(
+        pdf,
+        as_attachment=True,
+        download_name=f'{row.voucher_no}.pdf',
+        mimetype='application/pdf',
+    )
 
 
 @app.route('/receipts', methods=['GET', 'POST'])
@@ -539,15 +608,34 @@ def receipts():
         db.session.commit()
         flash('Receipt saved.', 'success')
         return redirect(url_for('receipts'))
-    return render_template('receipts.html', receipts=Receipt.query.order_by(Receipt.id.desc()).all(), customers=Customer.query.order_by(Customer.name).all(), voucher_no=next_number('REC', None), today=date.today())
+
+    return render_template(
+        'receipts.html',
+        receipts=Receipt.query.order_by(Receipt.id.desc()).all(),
+        customers=Customer.query.order_by(Customer.name).all(),
+        voucher_no=next_number('REC', None),
+        today=date.today(),
+    )
 
 
 @app.route('/receipt/<int:row_id>/pdf')
 @login_required
 def receipt_pdf(row_id):
     row = Receipt.query.get_or_404(row_id)
-    pdf = simple_pdf('RECEIPT VOUCHER', row.voucher_no, row.voucher_date, row.customer.name, [row.customer.address], [('Amount', money(row.amount)), ('Reference', row.reference), ('Notes', row.notes)])
-    return send_file(pdf, as_attachment=True, download_name=f'{row.voucher_no}.pdf', mimetype='application/pdf')
+    pdf = simple_pdf(
+        'RECEIPT VOUCHER',
+        row.voucher_no,
+        row.voucher_date,
+        row.customer.name,
+        [row.customer.address],
+        [('Amount', money(row.amount)), ('Reference', row.reference), ('Notes', row.notes)],
+    )
+    return send_file(
+        pdf,
+        as_attachment=True,
+        download_name=f'{row.voucher_no}.pdf',
+        mimetype='application/pdf',
+    )
 
 
 @app.route('/credit-notes', methods=['GET', 'POST'])
@@ -570,15 +658,40 @@ def credit_notes():
         db.session.commit()
         flash('Credit note saved.', 'success')
         return redirect(url_for('credit_notes'))
-    return render_template('credit_notes.html', credit_notes=CreditNote.query.order_by(CreditNote.id.desc()).all(), customers=Customer.query.order_by(Customer.name).all(), credit_no=next_number('CRN', None), today=date.today())
+
+    return render_template(
+        'credit_notes.html',
+        credit_notes=CreditNote.query.order_by(CreditNote.id.desc()).all(),
+        customers=Customer.query.order_by(Customer.name).all(),
+        credit_no=next_number('CRN', None),
+        today=date.today(),
+    )
 
 
 @app.route('/credit-note/<int:row_id>/pdf')
 @login_required
 def credit_note_pdf(row_id):
     row = CreditNote.query.get_or_404(row_id)
-    pdf = simple_pdf('CREDIT NOTE', row.credit_no, row.credit_date, row.customer.name, [row.customer.address], [('Invoice Ref', row.invoice_ref), ('Description', row.description), ('Taxable Amount', money(row.taxable_amount)), ('VAT Amount', money(row.vat_amount)), ('Total', money(row.total_amount))])
-    return send_file(pdf, as_attachment=True, download_name=f'{row.credit_no}.pdf', mimetype='application/pdf')
+    pdf = simple_pdf(
+        'CREDIT NOTE',
+        row.credit_no,
+        row.credit_date,
+        row.customer.name,
+        [row.customer.address],
+        [
+            ('Invoice Ref', row.invoice_ref),
+            ('Description', row.description),
+            ('Taxable Amount', money(row.taxable_amount)),
+            ('VAT Amount', money(row.vat_amount)),
+            ('Total', money(row.total_amount)),
+        ],
+    )
+    return send_file(
+        pdf,
+        as_attachment=True,
+        download_name=f'{row.credit_no}.pdf',
+        mimetype='application/pdf',
+    )
 
 
 @app.route('/statement', methods=['GET'])
@@ -589,11 +702,13 @@ def statement():
     ledger = []
     balance = Decimal('0.00')
     customer = None
+
     if customer_id:
         customer = Customer.query.get_or_404(customer_id)
         invoices = Invoice.query.filter_by(customer_id=customer_id).all()
         receipts = Receipt.query.filter_by(customer_id=customer_id).all()
         credits = CreditNote.query.filter_by(customer_id=customer_id).all()
+
         rows = []
         for inv in invoices:
             rows.append((inv.invoice_date, inv.invoice_no, 'Invoice', to_decimal(inv.grand_total), Decimal('0.00')))
@@ -601,9 +716,20 @@ def statement():
             rows.append((rec.voucher_date, rec.voucher_no, 'Receipt', Decimal('0.00'), to_decimal(rec.amount)))
         for cr in credits:
             rows.append((cr.credit_date, cr.credit_no, 'Credit Note', Decimal('0.00'), to_decimal(cr.total_amount)))
+
         for row in sorted(rows, key=lambda x: (x[0], x[1])):
             balance += row[3] - row[4]
-            ledger.append({'date': row[0], 'doc_no': row[1], 'type': row[2], 'debit': row[3], 'credit': row[4], 'balance': balance})
+            ledger.append(
+                {
+                    'date': row[0],
+                    'doc_no': row[1],
+                    'type': row[2],
+                    'debit': row[3],
+                    'credit': row[4],
+                    'balance': balance,
+                }
+            )
+
     return render_template('statement.html', customers=customers, customer=customer, ledger=ledger)
 
 
@@ -615,6 +741,7 @@ def statement_pdf():
     invoices = Invoice.query.filter_by(customer_id=customer_id).all()
     receipts = Receipt.query.filter_by(customer_id=customer_id).all()
     credits = CreditNote.query.filter_by(customer_id=customer_id).all()
+
     rows = []
     bal = Decimal('0.00')
     for inv in invoices:
@@ -631,6 +758,7 @@ def statement_pdf():
     y = height - 55 * mm
     pdf.drawString(18 * mm, y, f'Customer: {customer.name}')
     y -= 8 * mm
+
     headers_x = [18 * mm, 45 * mm, 75 * mm, 115 * mm, 145 * mm, 175 * mm]
     headers = ['Date', 'Doc No', 'Type', 'Debit', 'Credit', 'Balance']
     pdf.setFont('Helvetica-Bold', 9)
@@ -639,6 +767,7 @@ def statement_pdf():
     y -= 4 * mm
     pdf.line(18 * mm, y, width - 18 * mm, y)
     y -= 6 * mm
+
     pdf.setFont('Helvetica', 9)
     for row in rows:
         bal += row[3] - row[4]
@@ -646,6 +775,7 @@ def statement_pdf():
             pdf.showPage()
             width, height = draw_common_header(pdf, 'CUSTOMER STATEMENT', f'ST-{customer.id:04d}', date.today())
             y = height - 35 * mm
+
         pdf.drawString(headers_x[0], y, row[0].strftime('%d-%m-%Y'))
         pdf.drawString(headers_x[1], y, row[1])
         pdf.drawString(headers_x[2], y, row[2])
@@ -653,39 +783,25 @@ def statement_pdf():
         pdf.drawRightString(headers_x[5] - 2 * mm, y, money(row[4]))
         pdf.drawRightString(width - 18 * mm, y, money(bal))
         y -= 7 * mm
+
     pdf.drawString(18 * mm, 15 * mm, COMPANY['footer'])
     pdf.save()
     buffer.seek(0)
-    return send_file(buffer, as_attachment=True, download_name=f'statement-{customer.id}.pdf', mimetype='application/pdf')
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-
-        user = User.query.filter_by(username=username).first()
-
-        if user and check_password_hash(user.password_hash, password):
-            session['user_id'] = user.id           
-            return redirect('/')
-        flash('Invalid username or password')
-
-    return render_template('login.html')
-
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=f'statement-{customer.id}.pdf',
+        mimetype='application/pdf',
+    )
 
 
 with app.app_context():
     db.create_all()
-
-if __name__ == '__main__':
     if not User.query.filter_by(username='admin').first():
         db.session.add(User(username='admin', password_hash=generate_password_hash('admin123')))
         db.session.commit()
 
+
+if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)             
+    app.run(host='0.0.0.0', port=port, debug=False)
