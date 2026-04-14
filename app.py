@@ -658,10 +658,10 @@ def statement_pdf():
     buffer.seek(0)
     return send_file(buffer, as_attachment=True, download_name=f'statement-{customer.id}.pdf', mimetype='application/pdf')
 
-
+with app.app_context():
+    db.create_all()                                  
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
+    
         if not User.query.filter_by(username='admin').first():
             db.session.add(User(username='admin', password_hash=generate_password_hash('admin123')))
             db.session.commit()
