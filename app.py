@@ -660,7 +660,7 @@ def statement_pdf():
 with app.app_context():
     db.create_all()
 
-if _name_ == '_main_':
+if __name__ == '__main__':
     if not User.query.filter_by(username='admin').first():
         db.session.add(User(username='admin', password_hash=generate_password_hash('admin123')))
         db.session.commit()
