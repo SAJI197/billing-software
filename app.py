@@ -27,7 +27,7 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "supersecretkey")
 
 db_url = os.environ.get("DATABASE_URL")
 if not db_url:
-db_url = "sqlite:///" + os.path.join(BASE_DIR, "app.db")
+    db_url = "sqlite:///" + os.path.join(BASE_DIR, "app.db")
 
 # Render PostgreSQL fix
 
