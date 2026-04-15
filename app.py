@@ -190,6 +190,7 @@ def money_filter(val):
 
 
 def amount_in_words(amount: Decimal) -> str:
+    amount = to_decimal(amount)
     whole = int(amount)
     frac = int((amount - Decimal(whole)) * 100)
     if num2words:
@@ -198,6 +199,10 @@ def amount_in_words(amount: Decimal) -> str:
             return f"{words} Dirhams and {frac:02d}/100"
         return f"{words} Dirhams Only"
     return f"AED {money(amount)} Only"
+
+
+def clean_text(value):
+    return " ".join((value or "").replace("\xa0", " ").replace("•", "-").split())
 
 
 def login_required(func_):
@@ -278,20 +283,23 @@ def compute_invoice_totals(items):
 
 def draw_common_header(pdf, title, doc_no, doc_date):
     width, height = A4
+    left = 18 * mm
+    right = width - 18 * mm
+
     pdf.setFont("Helvetica-Bold", 15)
-    pdf.drawString(18 * mm, height - 18 * mm, COMPANY["name"])
+    pdf.drawString(left, height - 18 * mm, COMPANY["name"])
     pdf.setFont("Helvetica", 9)
-    pdf.drawString(18 * mm, height - 24 * mm, COMPANY["address"])
-    pdf.drawString(18 * mm, height - 29 * mm, COMPANY["trn"])
-    pdf.drawString(18 * mm, height - 34 * mm, COMPANY["phone"])
-    pdf.drawString(18 * mm, height - 39 * mm, COMPANY["email"])
+    pdf.drawString(left, height - 24 * mm, COMPANY["address"])
+    pdf.drawString(left, height - 29 * mm, COMPANY["trn"])
+    pdf.drawString(left, height - 34 * mm, COMPANY["phone"])
+    pdf.drawString(left, height - 39 * mm, COMPANY["email"])
 
     pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawRightString(width - 18 * mm, height - 18 * mm, title)
+    pdf.drawRightString(right, height - 18 * mm, title)
     pdf.setFont("Helvetica", 10)
-    pdf.drawRightString(width - 18 * mm, height - 26 * mm, f"No: {doc_no}")
-    pdf.drawRightString(width - 18 * mm, height - 32 * mm, f"Date: {doc_date.strftime('%d-%m-%Y')}")
-    pdf.line(18 * mm, height - 44 * mm, width - 18 * mm, height - 44 * mm)
+    pdf.drawRightString(right, height - 26 * mm, f"No: {doc_no}")
+    pdf.drawRightString(right, height - 32 * mm, f"Date: {doc_date.strftime('%d-%m-%Y')}")
+    pdf.line(left, height - 44 * mm, right, height - 44 * mm)
     return width, height
 
 
@@ -304,12 +312,12 @@ def simple_pdf(title, doc_no, doc_date, party_name, party_meta, lines):
     pdf.setFont("Helvetica-Bold", 10)
     pdf.drawString(18 * mm, y, "Party:")
     pdf.setFont("Helvetica", 10)
-    pdf.drawString(33 * mm, y, party_name)
+    pdf.drawString(33 * mm, y, clean_text(party_name))
     y -= 6 * mm
 
     for line in party_meta:
         if line:
-            pdf.drawString(33 * mm, y, str(line))
+            pdf.drawString(33 * mm, y, clean_text(str(line)))
             y -= 5 * mm
 
     y -= 5 * mm
@@ -326,9 +334,6 @@ def simple_pdf(title, doc_no, doc_date, party_name, party_meta, lines):
 
 
 def invoice_pdf(invoice):
-    def clean_text(value):
-        return " ".join((value or "").replace("\xa0", " ").replace("•", "-").split())
-
     def vat_percent_text(value):
         dec = to_decimal(value)
         return f"{int(dec)}%" if dec == dec.to_integral() else f"{dec.normalize()}%"
@@ -344,7 +349,9 @@ def invoice_pdf(invoice):
     left = 18 * mm
     right = width - 18 * mm
     table_width = right - left
-    col_widths = [12 * mm, 76 * mm, 18 * mm, 25 * mm, 25 * mm, 16 * mm, 22 * mm]
+
+    # Fits exactly into printable width
+    col_widths = [10 * mm, 66 * mm, 14 * mm, 22 * mm, 22 * mm, 14 * mm, 26 * mm]
     x_positions = [left]
     for w in col_widths:
         x_positions.append(x_positions[-1] + w)
@@ -360,7 +367,7 @@ def invoice_pdf(invoice):
         y -= 5 * mm
 
         if invoice.customer.address:
-            pdf.drawString(left + 20 * mm, y, clean_text(invoice.customer.address)[:80])
+            pdf.drawString(left + 20 * mm, y, clean_text(invoice.customer.address)[:70])
             y -= 5 * mm
 
         if invoice.customer.trn:
@@ -401,7 +408,7 @@ def invoice_pdf(invoice):
 
         for idx, item in enumerate(page_items, start=page_idx * per_page + 1):
             pdf.drawCentredString((x_positions[0] + x_positions[1]) / 2, y, str(idx))
-            pdf.drawString(x_positions[1] + 2 * mm, y, clean_text(item["description"])[:42])
+            pdf.drawString(x_positions[1] + 2 * mm, y, clean_text(item["description"])[:36])
             pdf.drawRightString(x_positions[3] - 2 * mm, y, money(item["qty"]))
             pdf.drawRightString(x_positions[4] - 2 * mm, y, money(item["rate"]))
             pdf.drawRightString(x_positions[5] - 2 * mm, y, money(item["amount"]))
@@ -436,6 +443,113 @@ def invoice_pdf(invoice):
 
         if page_idx < pages - 1:
             pdf.showPage()
+
+    pdf.save()
+    buffer.seek(0)
+    return buffer
+
+
+def credit_note_pdf_buffer(row):
+    buffer = io.BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+
+    left = 18 * mm
+    right = width - 18 * mm
+    table_width = right - left
+
+    pdf.setFont("Helvetica-Bold", 15)
+    pdf.drawString(left, height - 18 * mm, COMPANY["name"])
+    pdf.setFont("Helvetica", 9)
+    pdf.drawString(left, height - 24 * mm, COMPANY["address"])
+    pdf.drawString(left, height - 29 * mm, COMPANY["trn"])
+    pdf.drawString(left, height - 34 * mm, COMPANY["phone"])
+    pdf.drawString(left, height - 39 * mm, COMPANY["email"])
+
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawRightString(right, height - 18 * mm, "CREDIT NOTE")
+    pdf.setFont("Helvetica", 10)
+    pdf.drawRightString(right, height - 26 * mm, f"No: {row.credit_no}")
+    pdf.drawRightString(right, height - 32 * mm, f"Date: {row.credit_date.strftime('%d-%m-%Y')}")
+    pdf.line(left, height - 44 * mm, right, height - 44 * mm)
+
+    y = height - 56 * mm
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawString(left, y, "Customer:")
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(left + 20 * mm, y, clean_text(row.customer.name))
+    y -= 5 * mm
+
+    if row.customer.address:
+        pdf.drawString(left + 20 * mm, y, clean_text(row.customer.address)[:70])
+        y -= 5 * mm
+
+    if row.customer.trn:
+        pdf.drawString(left + 20 * mm, y, f"TRN: {clean_text(row.customer.trn)}")
+        y -= 5 * mm
+
+    y -= 4 * mm
+
+    table_top = y
+    row_h = 10 * mm
+    table_bottom = 95 * mm
+
+    col_widths = [10 * mm, 80 * mm, 26 * mm, 26 * mm, 32 * mm]
+    x_positions = [left]
+    for w in col_widths:
+        x_positions.append(x_positions[-1] + w)
+
+    headers = ["#", "Description", "Taxable", "VAT", "Total"]
+
+    pdf.setFont("Helvetica-Bold", 9)
+    pdf.rect(left, table_bottom, table_width, table_top - table_bottom + row_h, stroke=1, fill=0)
+    pdf.setFillGray(0.94)
+    pdf.rect(left, table_top - 2 * mm, table_width, row_h, stroke=0, fill=1)
+    pdf.setFillGray(0)
+
+    for x in x_positions[1:-1]:
+        pdf.line(x, table_bottom, x, table_top - 2 * mm + row_h)
+
+    pdf.line(left, table_top - 2 * mm, right, table_top - 2 * mm)
+    pdf.line(left, table_top - 2 * mm + row_h, right, table_top - 2 * mm + row_h)
+
+    header_y = table_top + 1 * mm
+    pdf.drawCentredString((x_positions[0] + x_positions[1]) / 2, header_y, headers[0])
+    pdf.drawString(x_positions[1] + 2 * mm, header_y, headers[1])
+    pdf.drawRightString(x_positions[3] - 2 * mm, header_y, headers[2])
+    pdf.drawRightString(x_positions[4] - 2 * mm, header_y, headers[3])
+    pdf.drawRightString(x_positions[5] - 2 * mm, header_y, headers[4])
+
+    y = table_top - 2 * mm - 7 * mm
+    pdf.setFont("Helvetica", 9)
+    pdf.drawCentredString((x_positions[0] + x_positions[1]) / 2, y, "1")
+    desc = clean_text(row.description) if row.description else f"Credit against Invoice Ref: {row.invoice_ref}"
+    pdf.drawString(x_positions[1] + 2 * mm, y, desc[:44])
+    pdf.drawRightString(x_positions[3] - 2 * mm, y, money(row.taxable_amount))
+    pdf.drawRightString(x_positions[4] - 2 * mm, y, money(row.vat_amount))
+    pdf.drawRightString(x_positions[5] - 2 * mm, y, money(row.total_amount))
+    pdf.line(left, y - 3 * mm, right, y - 3 * mm)
+
+    note_y = 84 * mm
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(left, note_y, f"Invoice Reference: {row.invoice_ref or '-'}")
+    note_y -= 7 * mm
+    pdf.drawString(left, note_y, f"Amount in words: {amount_in_words(to_decimal(row.total_amount))}")
+
+    summary = [
+        ("Taxable Amount", row.taxable_amount),
+        ("VAT Amount", row.vat_amount),
+        ("Total", row.total_amount),
+    ]
+
+    label_x = 128 * mm
+    value_x = right - 2 * mm
+    sy = 84 * mm
+    for label, value in summary:
+        pdf.setFont("Helvetica-Bold" if label == "Total" else "Helvetica", 10)
+        pdf.drawString(label_x, sy, label)
+        pdf.drawRightString(value_x, sy, money(value))
+        sy -= 6 * mm
 
     pdf.save()
     buffer.seek(0)
@@ -790,22 +904,8 @@ def credit_notes():
 @login_required
 def credit_note_pdf(row_id):
     row = CreditNote.query.get_or_404(row_id)
-    pdf = simple_pdf(
-        "CREDIT NOTE",
-        row.credit_no,
-        row.credit_date,
-        row.customer.name,
-        [row.customer.address],
-        [
-            ("Invoice Ref", row.invoice_ref),
-            ("Description", row.description),
-            ("Taxable Amount", money(row.taxable_amount)),
-            ("VAT Amount", money(row.vat_amount)),
-            ("Total", money(row.total_amount)),
-        ],
-    )
     return send_file(
-        pdf,
+        credit_note_pdf_buffer(row),
         as_attachment=True,
         download_name=f"{row.credit_no}.pdf",
         mimetype="application/pdf",
@@ -878,7 +978,7 @@ def statement_pdf():
     width, height = draw_common_header(pdf, "CUSTOMER STATEMENT", f"ST-{customer.id:04d}", date.today())
 
     y = height - 55 * mm
-    pdf.drawString(18 * mm, y, f"Customer: {customer.name}")
+    pdf.drawString(18 * mm, y, f"Customer: {clean_text(customer.name)}")
     y -= 8 * mm
 
     headers_x = [18 * mm, 45 * mm, 75 * mm, 115 * mm, 145 * mm, 175 * mm]
