@@ -1,0 +1,13 @@
+Invoice format fix completed:
+- TAX INVOICE moved to page center.
+- Company TRN printed below TAX INVOICE.
+- Right side label changed from No to Invoice No.
+- Date column added to invoice entry screen and invoice PDF.
+- Vehicle No column added to invoice entry screen and invoice PDF.
+- Net Amount column placed between Rate and VAT %.
+- Gross Amount column placed after VAT Amt.
+- Horizontal lines after each item removed.
+- Bottom Subtotal renamed to Net Amount.
+- VAT @ 0% and VAT Total removed from bottom summary.
+- Amount in words now prints as words, not AED number fallback.
+- requirements.txt updated with gunicorn and num2words.

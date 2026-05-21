@@ -55,7 +55,7 @@ db = SQLAlchemy(app)
 COMPANY = {
     "name": "TORONTO ROAD TRANSPORT LLC",
     "address": "Dubai, UAE",
-    "trn": "TRN: 100000000000003",
+    "trn": "TRN: 1000032582700003",
     "phone": "Phone: +971 00 000 0000",
     "email": "Email: accounts@example.com",
     "footer": "Powered by BAB ALFALAH",
@@ -192,13 +192,34 @@ def money_filter(val):
 def amount_in_words(amount: Decimal) -> str:
     amount = to_decimal(amount)
     whole = int(amount)
-    frac = int((amount - Decimal(whole)) * 100)
-    if num2words:
-        words = num2words(whole, to="cardinal", lang="en").title()
-        if frac:
-            return f"{words} Dirhams and {frac:02d}/100"
-        return f"{words} Dirhams Only"
-    return f"AED {money(amount)} Only"
+    frac = int(((amount - Decimal(whole)) * 100).quantize(Decimal("1")))
+
+    def words_under_1000(n):
+        ones = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"]
+        tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
+        if n < 20:
+            return ones[n]
+        if n < 100:
+            return tens[n // 10] + ((" " + ones[n % 10]) if n % 10 else "")
+        return ones[n // 100] + " Hundred" + ((" " + words_under_1000(n % 100)) if n % 100 else "")
+
+    def int_to_words(n):
+        if n == 0:
+            return "Zero"
+        parts = []
+        for value, label in [(10000000, "Crore"), (100000, "Lakh"), (1000, "Thousand")]:
+            if n >= value:
+                parts.append(words_under_1000(n // value) + " " + label)
+                n %= value
+        if n:
+            parts.append(words_under_1000(n))
+        return " ".join(parts)
+
+    words = num2words(whole, to="cardinal", lang="en").replace("-", " ").replace(",", "").title() if num2words else int_to_words(whole)
+    if frac:
+        fils = num2words(frac, to="cardinal", lang="en").replace("-", " ").replace(",", "").title() if num2words else int_to_words(frac)
+        return f"{words} Dirhams and {fils} Fils"
+    return f"{words} Only"
 
 
 def clean_text(value):
@@ -234,44 +255,44 @@ def next_number(prefix, current_value=None):
 
 
 def parse_invoice_items(form):
+    item_dates = form.getlist("item_date")
+    vehicle_nos = form.getlist("vehicle_no")
     descriptions = form.getlist("description")
-    vehicle_numbers = form.getlist("vehicle_number")
     qtys = form.getlist("qty")
     rates = form.getlist("rate")
-    gross_amounts = form.getlist("gross_amount")
     vats = form.getlist("vat_percent")
     items = []
 
-    max_len = max(len(descriptions), len(vehicle_numbers), len(qtys), len(rates), len(gross_amounts), len(vats)) if descriptions else 0
-
+    max_len = max(len(item_dates), len(vehicle_nos), len(descriptions), len(qtys), len(rates), len(vats), 0)
     for i in range(max_len):
+        item_date = item_dates[i] if i < len(item_dates) else ""
+        vehicle_no = vehicle_nos[i] if i < len(vehicle_nos) else ""
         desc = descriptions[i] if i < len(descriptions) else ""
-        vehicle_number = vehicle_numbers[i] if i < len(vehicle_numbers) else ""
         qty = qtys[i] if i < len(qtys) else ""
         rate = rates[i] if i < len(rates) else ""
-        gross_amount = gross_amounts[i] if i < len(gross_amounts) else ""
         vat = vats[i] if i < len(vats) else "5"
 
-        if not (desc or vehicle_number or qty or rate or gross_amount):
+        if not (item_date or vehicle_no or desc or qty or rate):
             continue
 
         qty_d = to_decimal(qty)
         rate_d = to_decimal(rate)
-        gross_d = to_decimal(gross_amount) if gross_amount else (qty_d * rate_d).quantize(Decimal("0.01"))
-        amount = gross_d
+        amount = (qty_d * rate_d).quantize(Decimal("0.01"))
         vat_pct = to_decimal(vat)
         vat_amount = (amount * vat_pct / Decimal("100")).quantize(Decimal("0.01"))
+        gross_amount = (amount + vat_amount).quantize(Decimal("0.01"))
 
         items.append(
             {
+                "item_date": item_date,
+                "vehicle_no": vehicle_no,
                 "description": desc,
-                "vehicle_number": vehicle_number,
                 "qty": str(qty_d),
                 "rate": str(rate_d),
-                "gross_amount": str(gross_d),
                 "amount": str(amount),
                 "vat_percent": str(vat_pct),
                 "vat_amount": str(vat_amount),
+                "gross_amount": str(gross_amount),
             }
         )
 
@@ -297,23 +318,32 @@ def compute_invoice_totals(items):
 
 def draw_common_header(pdf, title, doc_no, doc_date):
     width, height = A4
-    left = 18 * mm
-    right = width - 18 * mm
+    left = 8 * mm
+    right = width - 8 * mm
+    center = width / 2
 
-    pdf.setFont("Helvetica-Bold", 15)
-    pdf.drawString(left, height - 18 * mm, COMPANY["name"])
+    pdf.setFont("Helvetica-Bold", 18)
+    pdf.drawCentredString(center, height - 16 * mm, title)
+    pdf.setFont("Helvetica", 11)
+    pdf.drawCentredString(center, height - 23 * mm, COMPANY["trn"])
+
+    pdf.setFont("Helvetica-Bold", 12)
+    pdf.drawString(left, height - 32 * mm, COMPANY["name"])
     pdf.setFont("Helvetica", 9)
-    pdf.drawString(left, height - 24 * mm, COMPANY["address"])
-    pdf.drawString(left, height - 29 * mm, COMPANY["trn"])
-    pdf.drawString(left, height - 34 * mm, COMPANY["phone"])
-    pdf.drawString(left, height - 39 * mm, COMPANY["email"])
+    pdf.drawString(left, height - 38 * mm, COMPANY["address"])
+    pdf.drawString(left, height - 43 * mm, COMPANY["phone"])
+    pdf.drawString(left, height - 48 * mm, COMPANY["email"])
 
-    pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawRightString(right, height - 18 * mm, title)
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawRightString(right - 24 * mm, height - 36 * mm, "Invoice No:")
     pdf.setFont("Helvetica", 10)
-    pdf.drawRightString(right, height - 26 * mm, f"No: {doc_no}")
-    pdf.drawRightString(right, height - 32 * mm, f"Date: {doc_date.strftime('%d-%m-%Y')}")
-    pdf.line(left, height - 44 * mm, right, height - 44 * mm)
+    pdf.drawString(right - 22 * mm, height - 36 * mm, str(doc_no))
+    pdf.setFont("Helvetica-Bold", 10)
+    pdf.drawRightString(right - 24 * mm, height - 44 * mm, "Date:")
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(right - 22 * mm, height - 44 * mm, doc_date.strftime('%d-%m-%Y'))
+
+    pdf.line(left, height - 56 * mm, right, height - 56 * mm)
     return width, height
 
 
@@ -360,12 +390,12 @@ def invoice_pdf(invoice):
     per_page = 16
     pages = max(1, math.ceil(len(items) / per_page))
 
-    left = 18 * mm
-    right = width - 18 * mm
+    left = 8 * mm
+    right = width - 8 * mm
     table_width = right - left
 
-    # Fits exactly into printable width
-    col_widths = [9 * mm, 48 * mm, 24 * mm, 12 * mm, 19 * mm, 24 * mm, 14 * mm, 24 * mm]
+    # Final approved invoice order: #, Date, Vehicle No, Description, Qty, Rate, Net Amount, VAT %, VAT Amt, Gross Amount
+    col_widths = [8 * mm, 21 * mm, 21 * mm, 32 * mm, 14 * mm, 18 * mm, 25 * mm, 17 * mm, 22 * mm, 16 * mm]
     x_positions = [left]
     for w in col_widths:
         x_positions.append(x_positions[-1] + w)
@@ -373,89 +403,87 @@ def invoice_pdf(invoice):
     for page_idx in range(pages):
         draw_common_header(pdf, "TAX INVOICE", invoice.invoice_no, invoice.invoice_date)
 
-        y = height - 56 * mm
+        y = height - 67 * mm
         pdf.setFont("Helvetica-Bold", 10)
         pdf.drawString(left, y, "Customer:")
         pdf.setFont("Helvetica", 10)
-        pdf.drawString(left + 20 * mm, y, clean_text(invoice.customer.name))
-        y -= 5 * mm
+        pdf.drawString(left + 22 * mm, y, clean_text(invoice.customer.name))
+        y -= 6 * mm
 
         if invoice.customer.address:
-            pdf.drawString(left + 20 * mm, y, clean_text(invoice.customer.address)[:70])
-            y -= 5 * mm
+            pdf.drawString(left + 22 * mm, y, clean_text(invoice.customer.address)[:70])
+            y -= 6 * mm
 
         if invoice.customer.trn:
-            pdf.drawString(left + 20 * mm, y, f"TRN: {clean_text(invoice.customer.trn)}")
-            y -= 5 * mm
+            pdf.drawString(left + 22 * mm, y, f"TRN: {clean_text(invoice.customer.trn)}")
+            y -= 6 * mm
 
         y -= 4 * mm
 
         table_top = y
-        row_h = 8 * mm
-        table_bottom = 74 * mm if page_idx == pages - 1 else 28 * mm
+        row_h = 11 * mm
+        header_h = 9 * mm
+        table_bottom = 58 * mm if page_idx == pages - 1 else 24 * mm
 
-        headers = ["#", "Description", "Vehicle No", "Qty", "Rate", "Gross Amt", "VAT %", "VAT Amt"]
-        pdf.setFont("Helvetica-Bold", 9)
-        pdf.rect(left, table_bottom, table_width, table_top - table_bottom + row_h, stroke=1, fill=0)
+        headers = ["#", "Date", "Vehicle No", "Description", "Qty", "Rate", "Net Amount", "VAT %", "VAT Amt", "Gross Amount"]
+        pdf.rect(left, table_bottom, table_width, table_top - table_bottom + header_h, stroke=1, fill=0)
         pdf.setFillGray(0.94)
-        pdf.rect(left, table_top - 2 * mm, table_width, row_h, stroke=0, fill=1)
+        pdf.rect(left, table_top, table_width, header_h, stroke=0, fill=1)
         pdf.setFillGray(0)
 
         for x in x_positions[1:-1]:
-            pdf.line(x, table_bottom, x, table_top - 2 * mm + row_h)
+            pdf.line(x, table_bottom, x, table_top + header_h)
+        pdf.line(left, table_top, right, table_top)
+        pdf.line(left, table_top + header_h, right, table_top + header_h)
 
-        pdf.line(left, table_top - 2 * mm, right, table_top - 2 * mm)
-        pdf.line(left, table_top - 2 * mm + row_h, right, table_top - 2 * mm + row_h)
+        header_y = table_top + 3 * mm
+        pdf.setFont("Helvetica-Bold", 8)
+        for i, h in enumerate(headers):
+            pdf.drawCentredString((x_positions[i] + x_positions[i + 1]) / 2, header_y, h)
 
-        header_y = table_top + 1 * mm
-        pdf.drawCentredString((x_positions[0] + x_positions[1]) / 2, header_y, headers[0])
-        pdf.drawString(x_positions[1] + 2 * mm, header_y, headers[1])
-        pdf.drawString(x_positions[2] + 1 * mm, header_y, headers[2])
-        pdf.drawRightString(x_positions[4] - 1 * mm, header_y, headers[3])
-        pdf.drawRightString(x_positions[5] - 1 * mm, header_y, headers[4])
-        pdf.drawRightString(x_positions[6] - 1 * mm, header_y, headers[5])
-        pdf.drawRightString(x_positions[7] - 1 * mm, header_y, headers[6])
-        pdf.drawRightString(x_positions[8] - 1 * mm, header_y, headers[7])
-
-        y = table_top - 2 * mm - 6 * mm
+        y = table_top - 7 * mm
         page_items = items[page_idx * per_page:(page_idx + 1) * per_page]
-        pdf.setFont("Helvetica", 9)
+        pdf.setFont("Helvetica", 8.5)
 
         for idx, item in enumerate(page_items, start=page_idx * per_page + 1):
+            item_date = clean_text(item.get("item_date") or invoice.invoice_date.strftime('%d-%m-%Y'))
+            vehicle_no = clean_text(item.get("vehicle_no") or "-")
+            gross_amount = to_decimal(item.get("gross_amount", to_decimal(item.get("amount")) + to_decimal(item.get("vat_amount"))))
+
             pdf.drawCentredString((x_positions[0] + x_positions[1]) / 2, y, str(idx))
-            pdf.drawString(x_positions[1] + 1 * mm, y, clean_text(item.get("description", ""))[:27])
-            pdf.drawString(x_positions[2] + 1 * mm, y, clean_text(item.get("vehicle_number", ""))[:12])
-            pdf.drawRightString(x_positions[4] - 1 * mm, y, money(item.get("qty", 0)))
-            pdf.drawRightString(x_positions[5] - 1 * mm, y, money(item.get("rate", 0)))
-            pdf.drawRightString(x_positions[6] - 1 * mm, y, money(item.get("gross_amount", item.get("amount", 0))))
-            pdf.drawRightString(x_positions[7] - 1 * mm, y, vat_percent_text(item.get("vat_percent", 0)))
-            pdf.drawRightString(x_positions[8] - 1 * mm, y, money(item.get("vat_amount", 0)))
-            pdf.line(left, y - 2.5 * mm, right, y - 2.5 * mm)
+            pdf.drawCentredString((x_positions[1] + x_positions[2]) / 2, y, item_date[:10])
+            pdf.drawCentredString((x_positions[2] + x_positions[3]) / 2, y, vehicle_no[:12])
+            pdf.drawString(x_positions[3] + 2 * mm, y, clean_text(item.get("description", ""))[:23])
+            pdf.drawRightString(x_positions[5] - 2 * mm, y, money(item.get("qty")))
+            pdf.drawRightString(x_positions[6] - 2 * mm, y, money(item.get("rate")))
+            pdf.drawRightString(x_positions[7] - 2 * mm, y, money(item.get("amount")))
+            pdf.drawRightString(x_positions[8] - 2 * mm, y, vat_percent_text(item.get("vat_percent")))
+            pdf.drawRightString(x_positions[9] - 2 * mm, y, money(item.get("vat_amount")))
+            pdf.drawRightString(x_positions[10] - 2 * mm, y, money(gross_amount))
+            # No horizontal line after each item, as requested.
             y -= row_h
 
         if page_idx == pages - 1:
-            words_y = 58 * mm
-            pdf.setFont("Helvetica", 10)
-            pdf.drawString(left, words_y, f"Amount in words: {amount_in_words(to_decimal(invoice.grand_total))}")
+            words_y = 42 * mm
+            pdf.setFont("Helvetica", 9)
+            pdf.drawString(left, words_y, "Amount in words:")
+            pdf.setFont("Helvetica-Bold", 9)
+            pdf.drawString(left + 32 * mm, words_y, amount_in_words(to_decimal(invoice.grand_total))[:85])
 
-            summary = [
-                ("Subtotal", invoice.subtotal),
-                ("VAT @ 5%", invoice.vat_5_total),
-                ("VAT @ 0%", invoice.vat_0_total),
-                ("VAT Total", invoice.vat_total),
-                ("Grand Total", invoice.grand_total),
-            ]
-
-            label_x = 128 * mm
+            label_x = 123 * mm
             value_x = right - 2 * mm
-            sy = 58 * mm
+            sy = 42 * mm
+            summary = [("Net Amount", invoice.subtotal), ("VAT @ 5%", invoice.vat_5_total)]
             pdf.setFont("Helvetica", 10)
-
             for label, value in summary:
-                pdf.setFont("Helvetica-Bold" if label == "Grand Total" else "Helvetica", 10)
                 pdf.drawString(label_x, sy, label)
                 pdf.drawRightString(value_x, sy, money(value))
-                sy -= 6 * mm
+                sy -= 8 * mm
+
+            pdf.line(label_x, sy + 2 * mm, value_x, sy + 2 * mm)
+            pdf.setFont("Helvetica-Bold", 10)
+            pdf.drawString(label_x, sy - 4 * mm, "Grand Total")
+            pdf.drawRightString(value_x, sy - 4 * mm, money(invoice.grand_total))
 
         if page_idx < pages - 1:
             pdf.showPage()
@@ -483,7 +511,7 @@ def credit_note_pdf_buffer(row):
     pdf.drawString(left, height - 39 * mm, COMPANY["email"])
 
     pdf.setFont("Helvetica-Bold", 14)
-    pdf.drawRightString(right, height - 18 * mm, "TAX CREDIT NOTE")
+    pdf.drawRightString(right, height - 18 * mm, "CREDIT NOTE")
     pdf.setFont("Helvetica", 10)
     pdf.drawRightString(right, height - 26 * mm, f"No: {row.credit_no}")
     pdf.drawRightString(right, height - 32 * mm, f"Date: {row.credit_date.strftime('%d-%m-%Y')}")
@@ -613,70 +641,25 @@ def logout():
 @app.route("/")
 @login_required
 def dashboard():
-    month = request.args.get("month") or date.today().strftime("%Y-%m")
-    try:
-        start = datetime.strptime(month + "-01", "%Y-%m-%d").date()
-    except ValueError:
-        start = date.today().replace(day=1)
-        month = start.strftime("%Y-%m")
-    if start.month == 12:
-        end = date(start.year + 1, 1, 1)
-    else:
-        end = date(start.year, start.month + 1, 1)
-
-    invoices = Invoice.query.filter(Invoice.invoice_date >= start, Invoice.invoice_date < end).all()
-    purchases = Purchase.query.filter(Purchase.doc_date >= start, Purchase.doc_date < end).all()
-    receipts = Receipt.query.filter(Receipt.voucher_date >= start, Receipt.voucher_date < end).all()
-    payments = PaymentMade.query.filter(PaymentMade.voucher_date >= start, PaymentMade.voucher_date < end).all()
-
-    invoice_total = sum(to_decimal(i.grand_total) for i in invoices)
-    purchase_total = sum(to_decimal(p.total_amount) for p in purchases)
-    receipt_total = sum(to_decimal(r.amount) for r in receipts)
-    payment_total = sum(to_decimal(p.amount) for p in payments)
-    vat_output = sum(to_decimal(i.vat_total) for i in invoices)
-    vat_input = sum(to_decimal(p.vat_amount) for p in purchases)
-    vat_payable = vat_output - vat_input
-    receivable_balance = sum(to_decimal(i.grand_total) for i in Invoice.query.all()) - sum(to_decimal(r.amount) for r in Receipt.query.all()) - sum(to_decimal(c.total_amount) for c in CreditNote.query.all())
-    payable_balance = sum(to_decimal(p.total_amount) for p in Purchase.query.all()) - sum(to_decimal(p.amount) for p in PaymentMade.query.all())
-    net_cash_flow = receipt_total - payment_total
+    invoice_total = sum(to_decimal(i.grand_total) for i in Invoice.query.all())
+    purchase_total = sum(to_decimal(p.total_amount) for p in Purchase.query.all())
+    receipt_total = sum(to_decimal(r.amount) for r in Receipt.query.all())
+    payment_total = sum(to_decimal(p.amount) for p in PaymentMade.query.all())
 
     return render_template(
         "dashboard.html",
-        selected_month=month,
+        invoice_count=invoice_total,
+        purchase_count=purchase_total,
         invoice_total=invoice_total,
         purchase_total=purchase_total,
         receipt_total=receipt_total,
         payment_total=payment_total,
-        invoice_records=len(invoices),
-        purchase_records=len(purchases),
-        receipt_records=len(receipts),
-        payment_records=len(payments),
-        vat_output=vat_output,
-        vat_input=vat_input,
-        vat_payable=vat_payable,
-        receivable_balance=receivable_balance,
-        payable_balance=payable_balance,
-        net_cash_flow=net_cash_flow,
+        invoice_records=Invoice.query.count(),
+        purchase_records=Purchase.query.count(),
+        receipt_records=Receipt.query.count(),
+        payment_records=PaymentMade.query.count(),
     )
 
-
-@app.route("/virtual-cfo")
-@login_required
-def virtual_cfo():
-    receivable_balance = sum(to_decimal(i.grand_total) for i in Invoice.query.all()) - sum(to_decimal(r.amount) for r in Receipt.query.all()) - sum(to_decimal(c.total_amount) for c in CreditNote.query.all())
-    payable_balance = sum(to_decimal(p.total_amount) for p in Purchase.query.all()) - sum(to_decimal(p.amount) for p in PaymentMade.query.all())
-    total_sales = sum(to_decimal(i.grand_total) for i in Invoice.query.all())
-    total_purchase = sum(to_decimal(p.total_amount) for p in Purchase.query.all())
-    vat_output = sum(to_decimal(i.vat_total) for i in Invoice.query.all())
-    vat_input = sum(to_decimal(p.vat_amount) for p in Purchase.query.all())
-    return render_template(
-        "virtual_cfo.html",
-        receivable_balance=receivable_balance,
-        payable_balance=payable_balance,
-        total_sales=total_sales,
-        total_purchase=total_purchase,
-        vat_payable=vat_output - vat_input,
-    )
 
 @app.route("/customers", methods=["GET", "POST"])
 @login_required
