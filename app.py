@@ -377,6 +377,34 @@ def simple_pdf(title, doc_no, doc_date, party_name, party_meta, lines):
     return buffer
 
 
+
+def draw_wrapped_text(pdf, text, x, y, max_width, font_name="Helvetica", font_size=8.5, line_gap=4.2 * mm, max_lines=3):
+    """Draw text wrapped within max_width and return the next y position."""
+    words = clean_text(text).split()
+    lines = []
+    current = ""
+    for word in words:
+        test = word if not current else current + " " + word
+        if pdf.stringWidth(test, font_name, font_size) <= max_width:
+            current = test
+        else:
+            if current:
+                lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        while pdf.stringWidth(lines[-1] + "...", font_name, font_size) > max_width and len(lines[-1]) > 3:
+            lines[-1] = lines[-1][:-1]
+        lines[-1] = lines[-1] + "..."
+    pdf.setFont(font_name, font_size)
+    for line in lines:
+        pdf.drawString(x, y, line)
+        y -= line_gap
+    return y
+
+
 def invoice_pdf(invoice):
     def vat_percent_text(value):
         dec = to_decimal(value)
@@ -395,7 +423,8 @@ def invoice_pdf(invoice):
     table_width = right - left
 
     # Final approved invoice order: #, Date, Vehicle No, Description, Qty, Rate, Net Amount, VAT %, VAT Amt, Gross Amount
-    col_widths = [8 * mm, 21 * mm, 21 * mm, 32 * mm, 14 * mm, 18 * mm, 25 * mm, 17 * mm, 22 * mm, 16 * mm]
+    # Widths tuned to avoid Gross Amount overflow on large values while keeping A4 fit.
+    col_widths = [8 * mm, 20 * mm, 19 * mm, 28 * mm, 12 * mm, 16 * mm, 25 * mm, 14 * mm, 20 * mm, 32 * mm]
     x_positions = [left]
     for w in col_widths:
         x_positions.append(x_positions[-1] + w)
@@ -443,7 +472,7 @@ def invoice_pdf(invoice):
 
         y = table_top - 7 * mm
         page_items = items[page_idx * per_page:(page_idx + 1) * per_page]
-        pdf.setFont("Helvetica", 8.5)
+        pdf.setFont("Helvetica", 8)
 
         for idx, item in enumerate(page_items, start=page_idx * per_page + 1):
             item_date = clean_text(item.get("item_date") or invoice.invoice_date.strftime('%d-%m-%Y'))
@@ -453,7 +482,7 @@ def invoice_pdf(invoice):
             pdf.drawCentredString((x_positions[0] + x_positions[1]) / 2, y, str(idx))
             pdf.drawCentredString((x_positions[1] + x_positions[2]) / 2, y, item_date[:10])
             pdf.drawCentredString((x_positions[2] + x_positions[3]) / 2, y, vehicle_no[:12])
-            pdf.drawString(x_positions[3] + 2 * mm, y, clean_text(item.get("description", ""))[:23])
+            pdf.drawString(x_positions[3] + 2 * mm, y, clean_text(item.get("description", ""))[:21])
             pdf.drawRightString(x_positions[5] - 2 * mm, y, money(item.get("qty")))
             pdf.drawRightString(x_positions[6] - 2 * mm, y, money(item.get("rate")))
             pdf.drawRightString(x_positions[7] - 2 * mm, y, money(item.get("amount")))
@@ -465,12 +494,22 @@ def invoice_pdf(invoice):
 
         if page_idx == pages - 1:
             words_y = 42 * mm
-            pdf.setFont("Helvetica", 9)
+            pdf.setFont("Helvetica", 8.5)
             pdf.drawString(left, words_y, "Amount in words:")
-            pdf.setFont("Helvetica-Bold", 9)
-            pdf.drawString(left + 32 * mm, words_y, amount_in_words(to_decimal(invoice.grand_total))[:85])
+            # Keep amount words inside the left area so it never overlaps the totals box.
+            draw_wrapped_text(
+                pdf,
+                amount_in_words(to_decimal(invoice.grand_total)),
+                left + 32 * mm,
+                words_y,
+                70 * mm,
+                font_name="Helvetica-Bold",
+                font_size=8.3,
+                line_gap=4.0 * mm,
+                max_lines=3,
+            )
 
-            label_x = 123 * mm
+            label_x = 128 * mm
             value_x = right - 2 * mm
             sy = 42 * mm
             summary = [("Net Amount", invoice.subtotal), ("VAT @ 5%", invoice.vat_5_total)]
