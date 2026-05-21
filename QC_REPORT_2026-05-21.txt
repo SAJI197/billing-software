@@ -1,0 +1,24 @@
+Transport Billing Final Master - QC Report
+Date: 2026-05-21
+Source used: User uploaded ZIP billing-software-main(2).zip
+
+Checked / updated:
+1. Project opens and app.py compiles successfully.
+2. Uses Flask + SQLAlchemy + ReportLab.
+3. Render deployment files included: render.yaml, Procfile, requirements.txt, runtime.txt.
+4. No /init-db or database reset route found/added.
+5. Production session cookie settings are present.
+6. DATABASE_URL postgres:// compatibility fix is present.
+7. Invoice form updated with Vehicle No and Gross Amount columns.
+8. Invoice PDF updated with Vehicle No and Gross Amount columns.
+9. Invoice PDF supports multipage rows; totals and amount in words only on final page.
+10. Credit Note PDF heading corrected to TAX CREDIT NOTE.
+11. Dashboard updated with month filter and AED formatted totals.
+12. Dashboard includes VAT output/input/payable, cash flow, receivable and payable balances.
+13. Virtual CFO dashboard page added.
+14. ASP readiness fields already present in Invoice model: asp_status, asp_reference, uuid_ref.
+
+Important notes:
+- Default local login remains admin / admin123 unless ADMIN_USERNAME and ADMIN_PASSWORD are configured in Render environment variables.
+- For production use, set SECRET_KEY and ADMIN_PASSWORD in Render environment variables.
+- Do not delete app.db if you are using local SQLite data.
